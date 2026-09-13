@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>doe-designer web viewer</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #14161a; color: #d8dbe0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #app { display: grid; grid-template-columns: 1fr 300px; height: 100%; }
+  #view { position: relative; min-width: 0; }
+  #view canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: absolute; left: 12px; top: 10px; font-size: 12px; color: #aab0b8; pointer-events: none; white-space: pre; }
+  #panel { overflow-y: auto; padding: 10px 14px 20px; border-left: 1px solid #2a2e35; background: #191c21; }
+  h1 { font-size: 15px; margin: 4px 0 10px; font-weight: 600; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #8b929c; margin: 16px 0 6px; }
+  label { display: grid; grid-template-columns: 96px 1fr auto; align-items: center; gap: 8px; margin: 4px 0; }
+  label span.v { min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; color: #aab0b8; }
+  input[type=range] { width: 100%; }
+  select, button, input[type=file] { font: inherit; }
+  select { background: #23272e; color: inherit; border: 1px solid #3a3f48; border-radius: 4px; padding: 2px 4px; }
+  button { background: #2b3038; color: inherit; border: 1px solid #3a3f48; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+  button:hover { background: #363c46; }
+  .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+  .check { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  #info { font-size: 12px; color: #aab0b8; white-space: pre-line; }
+  #density { width: 100%; height: 90px; background: #101216; border: 1px solid #2a2e35; border-radius: 4px; }
+  #drop { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; color: #8b929c; font-size: 14px; pointer-events: none; }
+  #drop.hidden { display: none; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="view">
+    <canvas id="gl"></canvas>
+    <div id="hud"></div>
+    <div id="drop"><div>Pick a target image and press <b>Run design</b>,<br>or open a <code>volume.doev</code> written by <code>doe_design</code> (drop it here)</div></div>
+  </div>
+  <div id="panel">
+    <h1>doe-designer web viewer</h1>
+
+    <h2>Design</h2>
+    <div class="row"><input type="file" id="image" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"></div>
+    <div id="imageInfo" style="color:#aab0b8">no target image; pick a PNG/JPEG (luminance is used, aspect ratio kept)</div>
+    <label>wavelength (nm) <input type="number" id="pWavelength" value="532" min="200" max="2000" step="1" style="grid-column: span 2"></label>
+    <label>pitch (µm) <input type="number" id="pPitch" value="8" min="0.5" max="100" step="0.5" style="grid-column: span 2"></label>
+    <label>aperture (px) <select id="pActive" style="grid-column: span 2"><option>64</option><option>128</option><option selected>256</option><option>512</option></select></label>
+    <label>distance (mm) <input type="number" id="pDistance" value="50" min="0.1" max="2000" step="1" style="grid-column: span 2"></label>
+    <label>illumination <select id="pIllum" style="grid-column: span 2"><option value="square" selected>square</option><option value="disk">disk</option><option value="gaussian">Gaussian</option></select></label>
+    <label>start <select id="pInit" style="grid-column: span 2"><option value="tie" selected>TIE (binary targets)</option><option value="backprop">backprop (photographs)</option><option value="random">random</option></select></label>
+    <label>iterations <input type="number" id="pIters" value="300" min="1" max="5000" step="10" style="grid-column: span 2"></label>
+    <label>step (lr) <input type="number" id="pLr" value="0.05" min="0.001" max="1" step="0.005" style="grid-column: span 2"></label>
+    <label>µ (efficiency) <input type="number" id="pMu" value="0.3" min="0" max="5" step="0.01" style="grid-column: span 2"></label>
+    <label>levels <select id="pLevels" style="grid-column: span 2"><option value="0" selected>continuous</option><option value="2">2</option><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label>
+    <div class="check"><input type="checkbox" id="pGs" checked><label for="pGs" style="display:inline">Gerchberg-Saxton baseline</label></div>
+    <div class="check"><input type="checkbox" id="pBand" checked><label for="pBand" style="display:inline">band limit</label></div>
+    <div class="check"><input type="checkbox" id="pLetterbox" checked><label for="pLetterbox" style="display:inline">letterbox (dark strips beside a non-square image)</label></div>
+    <label>planes along z <input type="number" id="pNz" value="48" min="2" max="256" step="1" style="grid-column: span 2"></label>
+    <label>view crop (px) <input type="number" id="pView" value="256" min="8" max="1024" step="8" style="grid-column: span 2"></label>
+    <div class="row"><button id="run" disabled>Run design</button><button id="cancel" disabled>Cancel</button><button id="resweep" disabled>Re-propagate</button></div>
+    <div id="progressWrap" style="height:6px; background:#23272e; border-radius:3px; margin:6px 0"><div id="progress" style="height:100%; width:0; background:#7fb0ff; border-radius:3px"></div></div>
+    <div id="status" style="color:#aab0b8; min-height: 1.2em"></div>
+    <div id="sampling" style="color:#aab0b8; white-space: pre-line"></div>
+
+    <h2>Metrics</h2>
+    <div id="metrics" style="color:#aab0b8">no design yet</div>
+    <canvas id="convergence" width="270" height="110" style="width:100%; height:110px; background:#101216; border:1px solid #2a2e35; border-radius:4px; margin-top:6px"></canvas>
+    <div class="row" style="margin-top:6px"><button id="saveDoev" disabled>Save volume.doev</button><button id="savePhase" disabled>Save phase.png</button></div>
+
+    <h2>Open a volume file</h2>
+    <div class="row"><input type="file" id="file" accept=".doev"></div>
+    <div id="info">no volume loaded</div>
+
+    <h2>Playback</h2>
+    <div class="row"><button id="play">Play</button><span class="check"><input type="checkbox" id="bounce"><label for="bounce" style="display:inline">bounce</label></span></div>
+    <label>plane <input type="range" id="plane" min="0" max="0" step="1" value="0"><span class="v" id="planeV">0</span></label>
+    <label>z <span id="zV" style="grid-column: span 2; color:#aab0b8">–</span></label>
+    <label>planes / s <input type="range" id="speed" min="1" max="60" step="1" value="12"><span class="v" id="speedV">12</span></label>
+    <label>slice <select id="mode" style="grid-column: span 2">
+      <option value="intensity">intensity</option>
+      <option value="log">log intensity</option>
+      <option value="hsv" selected>HSV (hue = phase)</option>
+      <option value="vortices">vortices</option>
+      <option value="real">real part</option>
+    </select></label>
+    <label>log floor (dB) <input type="range" id="floor" min="10" max="80" step="1" value="40"><span class="v" id="floorV">40</span></label>
+    <label>gamma <input type="range" id="gamma" min="0.2" max="3" step="0.05" value="1"><span class="v" id="gammaV">1.00</span></label>
+    <div class="check"><input type="checkbox" id="anim"><label for="anim" style="display:inline">animate in time</label></div>
+    <label>rate (rad / s) <input type="range" id="omega" min="0.5" max="12" step="0.5" value="3"><span class="v" id="omegaV">3.0</span></label>
+    <div id="vortexV" style="margin-top:6px; color:#aab0b8">vortices in this plane: –</div>
+    <canvas id="density" width="270" height="90"></canvas>
+
+    <h2>Box</h2>
+    <label>z compression <input type="range" id="zc" min="0.25" max="4" step="0.05" value="1.5"><span class="v" id="zcV">1.50</span></label>
+    <div class="check"><input type="checkbox" id="walls" checked><label for="walls" style="display:inline">walls</label></div>
+    <label>wall opacity <input type="range" id="wallOp" min="0" max="1" step="0.05" value="0.85"><span class="v" id="wallOpV">0.85</span></label>
+    <label>entry face <select id="entry" style="grid-column: span 2"><option value="phase">DOE phase</option><option value="illuminated">illuminated DOE (HSV)</option><option value="none">none</option></select></label>
+    <label>exit face <select id="exit" style="grid-column: span 2"><option value="target">target</option><option value="reconstruction">reconstruction</option><option value="none">none</option></select></label>
+    <div class="check"><input type="checkbox" id="slicecb" checked><label for="slicecb" style="display:inline">show slice</label></div>
+    <p style="color:#8b929c; margin-top:14px">Drag to orbit, scroll to zoom. The box spans the DOE plane (entry face) to the target plane (exit face); z is compressed. The design runs in the browser (a Web Worker) with the same algorithms as <code>doe_design</code>: TIE or back-propagation start, Gerchberg-Saxton, Adam on the two-term energy, Wyrowski quantization.</p>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script src="colormaps.js"></script>
+<script src="doev.js"></script>
+<script src="slices.js"></script>
+<script src="core/fft.js"></script>
+<script src="core/util.js"></script>
+<script src="core/propagate.js"></script>
+<script src="core/energy.js"></script>
+<script src="core/init.js"></script>
+<script src="core/metrics.js"></script>
+<script src="core/quantize.js"></script>
+<script src="core/solvers.js"></script>
+<script src="core/pipeline.js"></script>
+<script src="worker_main.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>

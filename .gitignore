@@ -1,0 +1,30 @@
+# build trees
+build/
+build-*/
+cmake-build-*/
+compile_commands.json
+.cache/
+_deps/
+
+# editors / OS
+.DS_Store
+.vscode/
+.idea/
+imgui.ini
+.claude/
+
+# generated documentation
+docs/html/
+docs/latex/
+docs/xml/
+
+# run outputs
+results/
+results_*/
+*.doev
+
+# oversized literature (> 40 MB): keep a pdftotext extract instead
+docs/papers/*.large.pdf
+
+# python oracle runs (development only)
+__pycache__/

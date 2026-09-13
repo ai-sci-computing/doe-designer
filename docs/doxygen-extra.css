@@ -1,0 +1,10 @@
+/* Slightly wider content column and a readable code font for formula-heavy pages. */
+.contents { max-width: 1100px; }
+div.fragment, pre.fragment { font-size: 13px; }
+
+/* Images (README figures, manual sketch) scale with the browser window instead
+   of overflowing the content column; wide strips shrink, small ones keep their size. */
+.contents img, div.image img, .textblock img { max-width: 100%; height: auto; }
+div.image { max-width: 100%; }
+.contents table.markdownTable img { width: 100%; }
+.contents table.markdownTable { max-width: 100%; }
